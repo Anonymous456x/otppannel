@@ -160,3 +160,18 @@ def twofa_menu():
     )
     
     return builder.as_markup()
+
+def otp_group_menu():
+    builder = InlineKeyboardBuilder()
+    
+    builder.row(
+        InlineKeyboardButton(
+            text="👥 Join OTP Group",
+            url="https://t.me/+tjh9U60skJs2Mjk9"
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔙 Back", callback_data="back")
+    )
+    
+    return builder.as_markup()
