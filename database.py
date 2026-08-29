@@ -26,15 +26,6 @@ def init_db():
         requested_at TEXT
     )''')
     
-    c.execute('''CREATE TABLE IF NOT EXISTS sent_otps (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        number TEXT,
-        country TEXT,
-        country_code TEXT,
-        otp TEXT,
-        sent_at TEXT
-    )''')
-    
     conn.commit()
     conn.close()
 
@@ -53,15 +44,6 @@ def log_otp(user_id, number, service, country, country_code, otp):
     c.execute('''INSERT INTO otp_logs (user_id, number, service, country, country_code, otp, requested_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?)''',
               (user_id, number, service, country, country_code, otp, datetime.datetime.now().isoformat()))
-    conn.commit()
-    conn.close()
-
-def log_sent_otp(number, country, country_code, otp):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('''INSERT INTO sent_otps (number, country, country_code, otp, sent_at)
-                 VALUES (?, ?, ?, ?, ?)''',
-              (number, country, country_code, otp, datetime.datetime.now().isoformat()))
     conn.commit()
     conn.close()
 
