@@ -25,6 +25,7 @@ def load_numbers(country_name):
     
     filepath = os.path.join(NUMBER_FOLDER, country_data["file"])
     if not os.path.exists(filepath):
+        print(f"⚠️ File not found: {filepath}")
         return []
     
     with open(filepath, "r", encoding="utf-8") as f:
