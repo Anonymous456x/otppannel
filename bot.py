@@ -4,12 +4,12 @@ import random
 import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-from config import BOT_TOKEN, ADMIN_IDS, GROUP_ID
-from database import init_db, add_user, log_otp, log_sent_otp, get_user_otp_count
+from config import BOT_TOKEN, ADMIN_IDS
+from database import init_db, add_user, log_otp, get_user_otp_count
 from utils import (
     get_random_number, generate_otp, get_country_list,
     get_country_count, get_country_flag, get_country_code,
@@ -17,7 +17,7 @@ from utils import (
 )
 from keyboards import (
     main_menu, country_menu, service_menu, otp_waiting_menu,
-    stats_menu, live_traffic_menu, checker_menu, twofa_menu
+    stats_menu, live_traffic_menu, checker_menu, twofa_menu, otp_group_menu
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -29,66 +29,9 @@ dp = Dispatcher()
 # User sessions
 user_sessions = {}
 country_pages = {}
-auto_otp_running = True
 
 class SecretState(StatesGroup):
     waiting_for_secret = State()
-
-# ===================== AUTO OTP SENDER =====================
-async def send_auto_otps():
-    global auto_otp_running
-    
-    while auto_otp_running:
-        try:
-            count = random.randint(10, 15)
-            
-            for _ in range(count):
-                country = get_random_country()
-                number = get_random_number(country)
-                if not number:
-                    continue
-                
-                otp = generate_otp()
-                country_code = get_country_code(country)
-                flag = get_country_flag(country)
-                language = get_language(country)
-                formatted_number = format_number_for_display(number)
-                
-                channel_num = f"{random.randint(100, 999)}-{random.randint(100, 999)}"
-                if random.random() > 0.5:
-                    channel_num = str(random.randint(10000, 99999))
-                
-                admin_names = ["admin", "Archol", "Global OTP", "Network", "OTP Bot"]
-                admin = random.choice(admin_names)
-                
-                now = datetime.datetime.now()
-                time_str = now.strftime("%I:%M %p")
-                
-                message_text = f"""
-<b>{flag} Global OTP Network</b>
-{admin}
-{country_code} | {formatted_number} | {language} | {time_str}
-
-<b>Channel</b>
-{channel_num}
-
-<b>Get Number</b>
-"""
-                
-                await bot.send_message(
-                    chat_id=GROUP_ID,
-                    text=message_text,
-                    parse_mode="HTML"
-                )
-                
-                log_sent_otp(number, country, country_code, otp)
-                await asyncio.sleep(random.uniform(2, 5))
-            
-            await asyncio.sleep(random.uniform(30, 60))
-            
-        except Exception as e:
-            logger.error(f"Auto OTP error: {e}")
-            await asyncio.sleep(10)
 
 # ===================== START =====================
 @dp.message(Command("start"))
@@ -173,6 +116,7 @@ async def callback_service(callback: CallbackQuery):
     country_code = get_country_code(country)
     flag = get_country_flag(country)
     
+    # Get number from file
     number = get_random_number(country)
     if not number:
         await callback.message.edit_text(
@@ -185,7 +129,6 @@ async def callback_service(callback: CallbackQuery):
     otp = generate_otp()
     log_otp(user_id, number, service, country, country_code, otp)
     
-    # Get user's total OTP count (unlimited)
     total_otps = get_user_otp_count(user_id)
     
     waiting_text = f"""
@@ -256,27 +199,24 @@ async def callback_change_number(callback: CallbackQuery):
         parse_mode="HTML"
     )
 
+# ===================== COPY NUMBER =====================
+@dp.callback_query(lambda c: c.data == "copy_number")
+async def callback_copy_number(callback: CallbackQuery):
+    await callback.answer("📱 Number copied!", show_alert=True)
+
 # ===================== OTP GROUP =====================
 @dp.callback_query(lambda c: c.data == "otp_group")
 async def callback_otp_group(callback: CallbackQuery):
     await callback.answer()
     await callback.message.edit_text(
-        "👥 <b>OTP Group</b>\n\n"
-        "Join our OTP community groups:\n\n"
-        "📱 <b>Otp Pannel Bot</b>\n"
-        "🔗 <a href='https://t.me/+tjh9U60skJs2Mjk9'>Join Group</a>\n\n"
-        "📱 <b>Global OTP Network</b>\n"
-        "🔹 @GlobalOTPNetwork\n\n"
-        "📱 <b>PBD OTP GROUP</b>\n"
-        "🔹 @PBDOTPGroup\n\n"
-        "<i>Join these groups for more OTP services!</i>",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Back", callback_data="back")]
-            ]
-        ),
-        parse_mode="HTML",
-        disable_web_page_preview=True
+        "👥 <b>Join OTP Group</b>\n\n"
+        "Click the button below to join our OTP community:\n\n"
+        "🔹 Get more OTP numbers\n"
+        "🔹 24/7 active members\n"
+        "🔹 All countries available\n"
+        "🔹 Free & Unlimited",
+        reply_markup=otp_group_menu(),
+        parse_mode="HTML"
     )
 
 # ===================== MY STATS =====================
@@ -321,7 +261,7 @@ async def callback_live_traffic(callback: CallbackQuery):
             status = "🔴 LOW"
         traffic_text += f"{flag} {country}: <b>{status}</b> ({count} numbers)\n"
     
-    traffic_text += "\n<i>🔄 Auto-refreshes every 10 sec</i>"
+    traffic_text += "\n<i>🔄 Click refresh to update</i>"
     
     await callback.message.edit_text(
         traffic_text,
@@ -347,7 +287,6 @@ async def callback_check_service(callback: CallbackQuery):
     service = callback.data.replace("check_", "")
     await callback.message.edit_text(
         f"🔍 <b>Checking {service}</b>\n\n"
-        f"⏳ Checking OTP status for {service}...\n\n"
         f"✅ Service: <b>{service}</b>\n"
         f"📊 Status: <b>🟢 Active</b>\n\n"
         f"<i>This is a demo checker.</i>",
@@ -406,6 +345,63 @@ async def process_secret(message: Message, state: FSMContext):
     )
     await state.clear()
 
+# ===================== HISTORY =====================
+@dp.callback_query(lambda c: c.data == "history")
+async def callback_history(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.edit_text(
+        "📜 <b>History</b>\n\n"
+        "Your OTP request history:\n\n"
+        "<i>No history found.</i>",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Back", callback_data="my_stats")]
+            ]
+        ),
+        parse_mode="HTML"
+    )
+
+# ===================== WITHDRAW =====================
+@dp.callback_query(lambda c: c.data == "withdraw")
+async def callback_withdraw(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.edit_text(
+        "💸 <b>Withdraw</b>\n\n"
+        "Withdrawal options:\n\n"
+        "💵 <b>USDT (TRC20)</b>\n"
+        "   Min: 10 USDT\n\n"
+        "💳 <b>Bank Transfer (TK)</b>\n"
+        "   Min: 500 TK\n\n"
+        "⏳ Processing: 24-48 hours",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Back", callback_data="my_stats")]
+            ]
+        ),
+        parse_mode="HTML"
+    )
+
+# ===================== REFER =====================
+@dp.callback_query(lambda c: c.data == "refer")
+async def callback_refer(callback: CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    ref_link = f"https://t.me/otppannel_ibot?start=ref_{user_id}"
+    
+    await callback.message.edit_text(
+        f"👥 <b>Refer & Earn</b>\n\n"
+        f"Share your referral link:\n\n"
+        f"🔗 <code>{ref_link}</code>\n\n"
+        f"📊 Your Referrals: 0\n"
+        f"💰 Earned: 0.00 USDT",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Back", callback_data="my_stats")]
+            ]
+        ),
+        parse_mode="HTML"
+    )
+
 # ===================== BACK =====================
 @dp.callback_query(lambda c: c.data == "back")
 async def callback_back(callback: CallbackQuery):
@@ -437,14 +433,9 @@ async def callback_back(callback: CallbackQuery):
 async def main():
     init_db()
     
-    # Start auto OTP sender
-    asyncio.create_task(send_auto_otps())
-    
     print("🤖 Bot is starting...")
     print("📱 Bot: @otppannel_ibot")
-    print("✅ Auto OTP sender started!")
-    print("📊 Sending 10-15 OTPs per minute")
-    print("🎁 Free & Unlimited OTP for all users")
+    print("✅ Ready!")
     
     await dp.start_polling(bot)
 
